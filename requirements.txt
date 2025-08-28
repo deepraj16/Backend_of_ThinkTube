@@ -2,13 +2,19 @@ gunicorn==22.0.0
 
 flask==3.0.3
 flask-cors==4.0.1
-numpy==1.26.4
 requests==2.32.3
 
-chromadb==0.4.24 
+flask-cors==4.0.1
+gunicorn==22.0.0
+protobuf==3.20.3
+numpy>=2.1.0
+protobuf==3.20.3
 
+
+chromadb==0.4.24 
 langchain==0.3.25
 langchain-core==0.3.65
 langchain-community==0.3.25
 langchain-text-splitters==0.3.8
 langchain-mistralai==0.2.0
+
