@@ -31,15 +31,25 @@ current_rag_chain = None
 is_initialized = False
 
 def clear_current_video():
-    """Clear current video state"""
+    """Clear current video state completely"""
     global current_video_id, current_rag_chain, is_initialized
+    
+    # Clear RAG chain properly if it exists
+    if current_rag_chain:
+        try:
+            # If your RAG system has a cleanup method, call it here
+            # current_rag_chain.cleanup()  # Uncomment if available
+            del current_rag_chain
+        except Exception as e:
+            print(f"Error clearing RAG chain: {e}")
+    
     current_video_id = ""
     current_rag_chain = None
     is_initialized = False
-
-# @app.route("/")
-# def index():
-#     return render_template("index3.html")
+    
+    # Force garbage collection to ensure memory is cleared
+    import gc
+    gc.collect()
 
 @app.route("/get_youtube_video_info", methods=["POST"])
 def get_youtube_video_info():
@@ -50,22 +60,25 @@ def get_youtube_video_info():
     
     if not video_url:
         return jsonify({"error": "video_id is required"}), 400
-
+    
     video_id = extract_video_id(video_url)
     if not video_id:
         return jsonify({"error": "Invalid YouTube video URL"}), 400
-
-    # Clear any existing video state before loading new video
+    
+    # Always clear existing video state before loading new video
+    print(f"Clearing previous video state. Current video: {current_video_id}")
     clear_current_video()
     
     # Set new video
     current_video_id = video_id
+    print(f"Loading new video: {current_video_id}")
     
     video_info = {
         "video_id": video_id,
         "title": "YouTube Video",
         "description": "Video loaded successfully. You can now ask questions about this video.",
-        "status": "ready_for_questions"
+        "status": "ready_for_questions",
+        "initialized": False
     }
     return jsonify(video_info)
 
@@ -75,20 +88,27 @@ def initialize_video():
     
     if not current_video_id:
         return jsonify({"error": "No video ID found. Please load a video first."}), 400
-
-    # If already initialized for current video, return success
-    if is_initialized and current_rag_chain:
-        return jsonify({
-            "status": "success", 
-            "message": "Video already initialized and ready for questions."
-        })
-
+    
+    # Force re-initialization even if already initialized to ensure clean state
+    print(f"Initializing video: {current_video_id}")
+    
     try:
+        # Clear any existing RAG chain first
+        if current_rag_chain:
+            try:
+                del current_rag_chain
+            except:
+                pass
+        
+        current_rag_chain = None
+        is_initialized = False
+        
         # Initialize RAG system for current video
         main_chain, status = initialize_rag_system(current_video_id)
         if main_chain:
             current_rag_chain = main_chain
             is_initialized = True
+            print(f"Video {current_video_id} initialized successfully")
             return jsonify({
                 "status": "success", 
                 "message": "Video initialized successfully. You can now ask questions."
@@ -96,6 +116,7 @@ def initialize_video():
         else:
             return jsonify({"error": status}), 400
     except Exception as e:
+        print(f"Error initializing video: {e}")
         return jsonify({"error": f"Failed to initialize video: {str(e)}"}), 400
 
 @app.route("/ask_question", methods=["POST"])
@@ -110,10 +131,11 @@ def ask_question():
     
     if not current_video_id:
         return jsonify({"error": "No video loaded. Please load a video first."}), 400
-
+    
     # Initialize if not already done
     if not is_initialized or not current_rag_chain:
         try:
+            print(f"Auto-initializing video: {current_video_id}")
             main_chain, status = initialize_rag_system(current_video_id)
             if not main_chain:
                 return jsonify({"error": f"Failed to initialize video: {status}"}), 400
@@ -121,8 +143,9 @@ def ask_question():
             is_initialized = True
         except Exception as e:
             return jsonify({"error": f"Failed to initialize video: {str(e)}"}), 400
-
+    
     try:
+        print(f"Processing question for video: {current_video_id}")
         response = query_video(question, current_rag_chain)
         if response:
             return jsonify({
@@ -133,6 +156,7 @@ def ask_question():
         else:
             return jsonify({"error": "Failed to process your question. Please try again."}), 400
     except Exception as e:
+        print(f"Error processing question: {e}")
         return jsonify({"error": f"Error processing question: {str(e)}"}), 400
 
 @app.route("/quick_query", methods=["POST"])
@@ -148,8 +172,9 @@ def quick_query():
     
     if not current_video_id:
         return jsonify({"error": "No video loaded. Please load a video first."}), 400
-
+    
     try:
+        print(f"Processing quick query for video: {current_video_id}")
         result = process_video_query(current_video_id, question)
         if "error" in result:
             return jsonify(result), 400
@@ -160,6 +185,7 @@ def quick_query():
                 "video_id": current_video_id
             })
     except Exception as e:
+        print(f"Error processing quick query: {e}")
         return jsonify({"error": f"Error processing question: {str(e)}"}), 400
 
 @app.route("/get_current_video", methods=["GET"])
@@ -176,9 +202,20 @@ def get_current_video():
     else:
         return jsonify({"error": "No video loaded"}), 404
 
+@app.route("/clear_current_video", methods=["POST"])
+def clear_video_endpoint():
+    """Clear current video and reset state - for frontend use"""
+    print("Clearing current video via API call")
+    clear_current_video()
+    return jsonify({
+        "status": "success",
+        "message": "Video cleared successfully"
+    })
+
 @app.route("/clear_video", methods=["POST"])
 def clear_video():
-    """Clear current video and reset state"""
+    """Clear current video and reset state - legacy endpoint"""
+    print("Clearing current video via legacy API call")
     clear_current_video()
     return jsonify({
         "status": "success",
